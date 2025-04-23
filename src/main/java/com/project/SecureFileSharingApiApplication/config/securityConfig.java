@@ -21,8 +21,10 @@ public class securityConfig {
                 )
                 .sessionManagement().disable()
                 .httpBasic().disable()
-                .formLogin().disable(); // ❌ Disable form-based login
+                .formLogin().disable();
 
         return http.build();
     }
+
+
 }
