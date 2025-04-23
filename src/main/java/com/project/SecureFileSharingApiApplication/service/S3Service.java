@@ -18,11 +18,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class S3Service {
 
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
+    private static final Logger logger = LoggerFactory.getLogger(S3Service.class);
+
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
@@ -38,6 +43,7 @@ public class S3Service {
 
     public List<S3ObjectDto> listObjects(){
         try{
+            logger.info("Received request to list objects of bucket");
             ListObjectsV2Request request = ListObjectsV2Request.builder()
                     .bucket(bucketName)
                     .build();
@@ -50,18 +56,23 @@ public class S3Service {
                 s3ObjectDtoList.add(convertToDto(s3Object));
             }
 
+            logger.info("Object list is successfully fetched");
             return s3ObjectDtoList;
         } catch (S3Exception e){
+            logger.error("Unable to list the object from the bucket");
             throw new AWSServiceException("Unable to list the object from the bucket", e);
         }
     }
 
-    public String uploadFile(MultipartFile file)  {
+    public String uploadFile(MultipartFile file) {
         try {
             if (file == null || file.isEmpty()) {
+                logger.warn("File is empty or null");
                 throw new FileStorageException("File is empty or null");
             }
+
             String key = file.getOriginalFilename();
+            logger.info("Uploading file: {}", key);
 
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
@@ -71,23 +82,29 @@ public class S3Service {
 
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(file.getBytes()));
 
+            logger.info("Successfully uploaded file: {}", key);
             return key;
-        } catch (Exception e){
-            throw new FileStorageException("Failed to Upload File to S3");
+        } catch (Exception e) {
+            logger.error("Failed to upload file: {}", file != null ? file.getOriginalFilename() : "null", e);
+            throw new FileStorageException("Failed to upload file to S3", e);
         }
     }
 
     public byte[] downloadFile(String key) {
         try {
+            logger.info("Received request to download file");
             return s3Client.getObjectAsBytes(builder -> builder
                     .bucket(bucketName)
                     .key(key)
             ).asByteArray();
         } catch (NoSuchKeyException e) {
+            logger.error("File not found in S3 with key: " + key);
             throw new FileStorageException("File not found in S3 with key: " + key, e);
         } catch (S3Exception e) {
+            logger.error("S3 error while downloading file");
             throw new AWSServiceException("S3 error while downloading file", e);
         } catch (Exception e) {
+            logger.error("Error occurred during file download");
             throw new FileStorageException("Unexpected error during file download", e);
         }
 
@@ -95,6 +112,7 @@ public class S3Service {
 
     public String generatePreSignedUrl(String key) {
         try {
+            logger.info("Received request to generate pre-signed url for : " + key);
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
@@ -104,10 +122,11 @@ public class S3Service {
                     .signatureDuration(Duration.ofMinutes(2))
                     .getObjectRequest(getObjectRequest)
                     .build();
-
+            logger.info("Pre-signed url generated successfully : " + key);
             return s3Presigner.presignGetObject(preSignRequest).url().toString();
         } catch (S3Exception e){
-            throw new AWSServiceException("Failed to generate pre-signed url", e);
+            logger.error("Failed to generate pre-signed url for :" + key );
+            throw new AWSServiceException("Failed to generate pre-signed url for " + key, e);
         }
     }
 
@@ -125,3 +144,4 @@ public class S3Service {
     }
 
 }
+
